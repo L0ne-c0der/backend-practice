@@ -1,8 +1,12 @@
 var jwt = require('jsonwebtoken');
 const model = require('../model/user');
-const User = model.User;
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcrypt'); //for hashing passwords
+
+const User = model.User;
+
+
 const privateKey =  fs.readFileSync(path.resolve(__dirname,'../keys/private.key'), 'utf8'); //reading the private key from the file system
 const publicKey =  fs.readFileSync(path.resolve(__dirname,'../keys/public.key'), 'utf8'); //reading the public key from the file system
 
@@ -13,6 +17,9 @@ const publicKey =  fs.readFileSync(path.resolve(__dirname,'../keys/public.key'),
 exports.addUser = async (req, res) => {
   try {
     const user = new User(req.body);
+    const hash = bcrypt.hashSync(req.body.password, 12);
+    user.password = hash;
+
     var token = jwt.sign({ email: req.body.email }, privateKey, {algorithm: 'RS256'}); //params: payload, secret key
     user.token = token; // Assign the generated token to the user object
 
@@ -29,7 +36,34 @@ exports.addUser = async (req, res) => {
   }
 }
 
-
+exports.login = async (req, res) => {
+  try {
+    const doc = await User.findOne({ email: req.body.email });
+    const isAuth = bcrypt.compareSync(req.body.password, doc.password); // true
+    if(isAuth){
+      var token = jwt.sign({ email: req.body.email }, privateKey, {algorithm: 'RS256'}); //params: payload, secret key
+      doc.token = token; // Assign the generated token to the user object
+      doc.save();
+      res.status(200).json({
+        message: 'User logged in successfully',
+        user: {
+          email: doc.email,
+          token: doc.token
+        }
+      });
+    }
+    else{
+      res.status(401).json({
+        message: 'Invalid credentials'
+      });
+    }
+  } catch (err) {
+    res.status(400).json({
+      message: 'Error logging in',
+      error: err.message
+    });
+  }
+}
 //MIDDLEWARE
 //decode the token, and check if it is valid
 const auth = ((req, res, next) => {
